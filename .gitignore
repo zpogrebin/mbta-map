@@ -9,3 +9,6 @@ env
 *.log
 *.svg
 shape_parser/Screenshot 2023-12-02 at 3.53.37 PM.png
+
+# VS Code
+.vscode/

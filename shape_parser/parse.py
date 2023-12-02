@@ -11,6 +11,8 @@ import pathlib
 import svgwrite
 import pandas as pd
 
+from . import line
+
 # CONSTANTS
 _SHAPE_FILE = pathlib.Path("./shape_parser/shapes.txt")
 _ROUTE_FILE = pathlib.Path("./shape_parser/shapes_by_route.csv")
@@ -18,16 +20,6 @@ _OUTPUT_FILE = pathlib.Path("./shape_parser/shapes.svg")
 
 _BOSTON_ORIGIN = (42.3601, -71.0589)
 _LAT_LONG_SCALE = 1000
-
-class Line:
-
-    """Represents a line."""
-
-    shape_df: pd.DataFrame = None
-
-    def __init__(self, shape_df: pd.DataFrame):
-        self.shape_df = shape_df
-
 
 class MapMaker:
 
@@ -42,7 +34,7 @@ class MapMaker:
 
     def __init__(
             self, shape_file=_SHAPE_FILE, route_file=_ROUTE_FILE,
-            force_reanalysis=True
+            force_reanalysis=False
     ):
         self.force = force_reanalysis
         self.shape_file = shape_file
@@ -63,7 +55,8 @@ class MapMaker:
         for shape_id in df.shape_id.unique():
             self._print(f"Loading shape {shape_id}", 3)
             points = df[df.shape_id == shape_id]
-            self.shapes.append(points)
+            shape_line = line.make_line(points)
+            self.shapes.append(shape_line)
 
     def analyze(self, df: pd.DataFrame, save=True):
         """Analyzes the shapes dataframe."""
@@ -154,21 +147,6 @@ class MapMaker:
             )
         )
         for shape in self.shapes:
-            self._print(f"Drawing shape {shape.shape_id.iloc[0]}", 3)
-            points = shape[["x", "y"]].values.tolist()
-            # Shift points by the minimum x and y values
-            points = [
-                (point[0] - self.map_bounds[0], point[1] - self.map_bounds[2])
-                for point in points
-            ]
-            drawing.add(drawing.polyline(
-                points, 
-                stroke="#" + shape.route_color.iloc[0], 
-                fill="none")
-            )
+            shape: line.Line
+            shape.render(drawing, map_bounds=self.map_bounds)
         drawing.save()
-
-if __name__ == "__main__":
-    maker = MapMaker()
-    maker.make_svg()
-    print(maker.shapes)
