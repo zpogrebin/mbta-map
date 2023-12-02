@@ -19,6 +19,16 @@ _OUTPUT_FILE = pathlib.Path("./shape_parser/shapes.svg")
 _BOSTON_ORIGIN = (42.3601, -71.0589)
 _LAT_LONG_SCALE = 1000
 
+class Line:
+
+    """Represents a line."""
+
+    shape_df: pd.DataFrame = None
+
+    def __init__(self, shape_df: pd.DataFrame):
+        self.shape_df = shape_df
+
+
 class MapMaker:
 
     shapes = {}
