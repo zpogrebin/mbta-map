@@ -44,7 +44,7 @@ class MapMaker:
     def _print(self, message, level=1):
         """Prints a message if the verbosity is greater than the level."""
         if self.verbosity >= level:
-            print(message)
+            print("   " * level + message)
 
     def load_shapes(self,):
         """Loads shapes from a shape file and adds them to the shapes list."""
@@ -149,4 +149,5 @@ class MapMaker:
         for shape in self.shapes:
             shape: line.Line
             shape.render(drawing, map_bounds=self.map_bounds)
+            self._print(f"Rendered shape {shape}", 3)
         drawing.save()

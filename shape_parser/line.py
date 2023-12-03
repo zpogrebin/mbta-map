@@ -13,8 +13,10 @@ class Line:
     """Represents a line."""
 
     shape_df: pd.DataFrame = None
+
     line_width: float = 1
     opacity: float = 1
+    offset_curves = False
 
     route_id: str = None
     route_name: str = None
@@ -22,6 +24,8 @@ class Line:
     route_color: str = None
     route_text_color: str = None
     shape_id: str = None
+
+    drawing: svgwrite.Drawing = None
 
     def __init__(self, shape_df: pd.DataFrame):
         self.shape_df = shape_df
@@ -34,18 +38,20 @@ class Line:
 
     def render(self, dwg: svgwrite.Drawing, map_bounds: tuple):
         """Renders the line on a drawing."""
-        self.render_direction(0, dwg, map_bounds)
-        self.render_direction(1, dwg, map_bounds)
-        print(f"Rendered line {self.route_id}")
+        self.drawing = dwg
+        route_group = self.group(dwg, id=self.route_id)
+        self.render_direction(0, route_group, map_bounds)
+        self.render_direction(1, route_group, map_bounds)
 
     def render_direction(
             self, direction, dwg: svgwrite.Drawing, map_bounds: tuple
     ):
         """Renders the line's direction on a drawing."""
         shape = self.shape_df[self.shape_df.direction_id == direction]
+        group = dwg.add(self.group(dwg, id=f"{self.route_id}-{direction}"))
         for shape_id in shape.shape_id.unique():
             this_shape = self.shape_df[self.shape_df.shape_id == shape_id]
-            self.render_shapes(direction, dwg, map_bounds, this_shape)
+            self.render_shapes(direction, group, map_bounds, this_shape)
     
     def render_shapes(
             self, direction, dwg: svgwrite.Drawing, map_bounds: tuple,
@@ -71,14 +77,14 @@ class Line:
         path = svgpathtools.Path(*lines)
 
         # Offset the path basedon the direction
-        if direction == "0":
-            path = self.offset_curve(path, self.line_width)
-        elif direction == "1":
-            path = self.offset_curve(path, -self.line_width)
+        path = self.offset_curve_wrapper(path, direction)
 
-        points = [(float(segment.start.real), float(segment.start.imag)) for segment in path]
+        points = [
+            (float(segment.start.real), float(segment.start.imag))
+            for segment in path
+        ]
         # Convert the path to an svgwrite.shapes.Path object
-        line = dwg.polyline(
+        line = self.drawing.polyline(
             points=points, 
             stroke=self.route_color,
             stroke_width=self.line_width,
@@ -87,27 +93,60 @@ class Line:
         )
         return line
 
-    def offset_curve(path, offset_distance, steps=1000):
+    def offset_curve_wrapper(self, path, direction):
+        """Wraps the offset_curve function."""
+        if not self.offset_curves:
+            return path
+        path = self.offset_curve(path, -self.line_width)
+        return path
+
+    ############################################################################
+    # Helper functions                                                         #
+    ############################################################################
+
+    def offset_curve(self, path, offset_distance, steps=10):
         """
         Takes in a Path object, `path`, and a distance,
         `offset_distance`, and outputs an piecewise-linear approximation 
         of the 'parallel' offset curve.
+
+        From 
+        [readme.md](https://github.com/mathandy/svgpathtools/tree/master)
         """
         nls = []
         for seg in path:
             ct = 1
             for k in range(steps):
                 t = k / steps
+                if seg.start == seg.end:
+                    continue
                 offset_vector = offset_distance * seg.normal(t)
-                nl = Line(seg.point(t), seg.point(t) + offset_vector)
+                nl = svgpathtools.Line(
+                    seg.point(t), seg.point(t) + offset_vector
+                )
                 nls.append(nl)
         connect_the_dots = [
-            Line(nls[k].end, nls[k+1].end) for k in range(len(nls)-1)
+            svgpathtools.Line(nls[k].end, nls[k+1].end)
+            for k in range(len(nls)-1)
         ]
         if path.isclosed():
-            connect_the_dots.append(Line(nls[-1].end, nls[0].end))
+            connect_the_dots.append(svgpathtools.Line(nls[-1].end, nls[0].end))
         offset_path = svgpathtools.Path(*connect_the_dots)
         return offset_path
+
+    def group(self, add_to: svgwrite.Drawing, id: str):
+        """Adds a group to a drawing."""
+        return add_to.add(self.drawing.g(id=id))
+    
+    ############################################################################
+    # Dunders                                                                  #
+    ############################################################################
+
+    def __str__(self):
+        return f"{self.route_name} ({self.route_id})"
+    
+    def __repr__(self):
+        return f"{self.route_name} ({self.route_id})"
 
 class LightRail(Line):
 
@@ -115,6 +154,7 @@ class LightRail(Line):
 
     line_width = 0.25
     opacity = 0.5
+    offset_curves = True
 
 class Subway(Line):
     
@@ -122,6 +162,7 @@ class Subway(Line):
 
     line_width = 0.5
     opacity = 0.7
+    offset_curves = True
 
 class Rail(Line):
 
@@ -129,6 +170,9 @@ class Rail(Line):
 
     line_width = 0.5
     opacity = 0.5
+
+    def render(self, dwg: svgwrite.Drawing, map_bounds: tuple):
+        return dwg.polyline()
 
 class Bus(Line):
 
