@@ -52,9 +52,9 @@ class MapMaker:
         self.shapes = []
         df = pd.read_csv(self.shape_file)
         self.analyze(df)
-        for shape_id in df.shape_id.unique():
-            self._print(f"Loading shape {shape_id}", 3)
-            points = df[df.shape_id == shape_id]
+        for route_id in df.route_id.unique():
+            self._print(f"Loading shape {route_id}", 3)
+            points = df[df.route_id == route_id]
             shape_line = line.make_line(points)
             self.shapes.append(shape_line)
 
