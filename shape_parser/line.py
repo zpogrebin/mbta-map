@@ -8,6 +8,8 @@ import pandas as pd
 import svgwrite
 import svgpathtools
 
+from . import shape_tools
+
 class Line:
 
     """Represents a line."""
@@ -36,9 +38,10 @@ class Line:
         self.route_text_color = f"#{shape_df["route_text_color"].iloc[0]}"
         self.shape_ids = shape_df["shape_id"].unique()
 
-    def render(self, dwg: svgwrite.Drawing, map_bounds: tuple):
+    def render_route(self, dwg: svgwrite.Drawing, map_bounds: tuple):
         """Renders the line on a drawing."""
-        self.drawing = dwg
+        if dwg is None:
+            self.drawing = dwg
         route_group = self.group(dwg, id=self.route_id)
         self.render_direction(0, route_group, map_bounds)
         self.render_direction(1, route_group, map_bounds)
@@ -49,9 +52,11 @@ class Line:
         """Renders the line's direction on a drawing."""
         shape = self.shape_df[self.shape_df.direction_id == direction]
         group = dwg.add(self.group(dwg, id=f"{self.route_id}-{direction}"))
-        for shape_id in shape.shape_id.unique():
-            this_shape = self.shape_df[self.shape_df.shape_id == shape_id]
-            self.render_shapes(direction, group, map_bounds, this_shape)
+        # for shape_id in shape.shape_id.unique():
+        shape = shape.copy()
+        shape.sort_values("shape_pt_sequence", inplace=True)
+        # this_shape = self.shape_df[self.shape_df.shape_id == shape_id]
+        self.render_shapes(direction, group, map_bounds, shape)
     
     def render_shapes(
             self, direction, dwg: svgwrite.Drawing, map_bounds: tuple,
@@ -64,7 +69,8 @@ class Line:
             for point in points
         ]
         line = self.process_line(dwg, points, direction)
-        dwg.add(line)
+        if line.points != []:
+            dwg.add(line)
 
     def process_line(self, dwg, points, direction=None):
         # Create a list of Line objects connecting the points
@@ -89,7 +95,6 @@ class Line:
             stroke=self.route_color,
             stroke_width=self.line_width,
             fill="none",
-            opacity=self.opacity
         )
         return line
 
@@ -97,42 +102,12 @@ class Line:
         """Wraps the offset_curve function."""
         if not self.offset_curves:
             return path
-        path = self.offset_curve(path, -self.line_width)
+        path = shape_tools.offset_curve(path, -self.line_width)
         return path
 
     ############################################################################
     # Helper functions                                                         #
     ############################################################################
-
-    def offset_curve(self, path, offset_distance, steps=10):
-        """
-        Takes in a Path object, `path`, and a distance,
-        `offset_distance`, and outputs an piecewise-linear approximation 
-        of the 'parallel' offset curve.
-
-        From 
-        [readme.md](https://github.com/mathandy/svgpathtools/tree/master)
-        """
-        nls = []
-        for seg in path:
-            ct = 1
-            for k in range(steps):
-                t = k / steps
-                if seg.start == seg.end:
-                    continue
-                offset_vector = offset_distance * seg.normal(t)
-                nl = svgpathtools.Line(
-                    seg.point(t), seg.point(t) + offset_vector
-                )
-                nls.append(nl)
-        connect_the_dots = [
-            svgpathtools.Line(nls[k].end, nls[k+1].end)
-            for k in range(len(nls)-1)
-        ]
-        if path.isclosed():
-            connect_the_dots.append(svgpathtools.Line(nls[-1].end, nls[0].end))
-        offset_path = svgpathtools.Path(*connect_the_dots)
-        return offset_path
 
     def group(self, add_to: svgwrite.Drawing, id: str):
         """Adds a group to a drawing."""
@@ -152,7 +127,7 @@ class LightRail(Line):
 
     """Represents a light rail line."""
 
-    line_width = 0.25
+    line_width = 0.35
     opacity = 0.5
     offset_curves = True
 
@@ -170,9 +145,6 @@ class Rail(Line):
 
     line_width = 0.5
     opacity = 0.5
-
-    def render(self, dwg: svgwrite.Drawing, map_bounds: tuple):
-        return dwg.polyline()
 
 class Bus(Line):
 
@@ -235,6 +207,35 @@ _LINE_TYPES = {
     11: TrolleyBus,
     12: Monorail
 }
+
+_MODE_NAMES = {
+    0: "Light Rail",
+    1: "Subway",
+    2: "Rail",
+    3: "Bus",
+    4: "Ferry",
+    5: "Cable Car",
+    6: "Gondola",
+    7: "Funicular",
+    11: "Trolleybus",
+    12: "Monorail"
+
+}
+
+_LINE_OPACITIES = {
+    0: 1,
+    1: 1,
+    2: 0.5,
+    3: 0.2,
+    4: 0.3,
+    5: 0.5,
+    6: 0.3,
+    7: 0.3,
+    11: 0.2,
+    12: 0.5
+}
+
+_MODE_PRIORITY = [3, 5, 11, 6, 7, 4, 12, 2, 0, 1]
 
 def make_line(shape_df: pd.DataFrame) -> Line:
     """Makes a line from a shape dataframe."""

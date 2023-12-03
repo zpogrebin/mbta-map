@@ -23,7 +23,7 @@ _LAT_LONG_SCALE = 1000
 
 class MapMaker:
 
-    shapes = {}
+    routes: dict[line.Line] = {}
     verbosity = 10
 
     shape_file = None
@@ -31,6 +31,8 @@ class MapMaker:
     force = None
 
     map_bounds = None
+
+    drawing: svgwrite.Drawing = None
 
     def __init__(
             self, shape_file=_SHAPE_FILE, route_file=_ROUTE_FILE,
@@ -49,14 +51,14 @@ class MapMaker:
     def load_shapes(self,):
         """Loads shapes from a shape file and adds them to the shapes list."""
         self._print("Loading shapes")
-        self.shapes = []
+        self.routes = []
         df = pd.read_csv(self.shape_file)
         self.analyze(df)
         for route_id in df.route_id.unique():
             self._print(f"Loading shape {route_id}", 3)
             points = df[df.route_id == route_id]
             shape_line = line.make_line(points)
-            self.shapes.append(shape_line)
+            self.routes.append(shape_line)
 
     def analyze(self, df: pd.DataFrame, save=True):
         """Analyzes the shapes dataframe."""
@@ -139,15 +141,40 @@ class MapMaker:
         self._print("Making SVG")
         svgwrite.AUTHOR_EMAIL = "zpogrebin111@gmail.com"
         svgwrite.AUTHOR_NAME = "Zev Pogrebin"
-        drawing: svgwrite.Drawing = svgwrite.Drawing(
+        self.drawing: svgwrite.Drawing = svgwrite.Drawing(
             str(output_file), 
             size=(
                 f"{self.map_bounds[1] - self.map_bounds[0]}px", 
                 f"{self.map_bounds[3] - self.map_bounds[2]}px"
             )
         )
-        for shape in self.shapes:
+        self.render_routes(self.drawing)
+        self.drawing.save()
+    
+    def render_routes(self, draw_on):
+        """Renders routes on a drawing."""
+        # Make a group for the routes
+        routes_group = draw_on.add(self.drawing.g(id="routes"))
+        for mode in line._MODE_PRIORITY:
+            mode_name = line._MODE_NAMES[mode]
+            self._print(f"Rendering mode {mode_name}", 2)
+            routes = [i for i in self.routes if i.route_type == mode]
+            self.render_mode(routes, routes_group, line.Line.render_route)   
+
+    def render_mode(
+            self, routes: list[line.Line], dwg: svgwrite.Drawing,
+            mode_function: callable
+    ):
+        """Renders a mode on a drawing"""
+        # Create a group for the mode with the mode name
+        if len(routes) == 0:
+            return
+        mode = routes[0].route_type
+        mode_group = dwg.add(
+            self.drawing.g(id=mode, opacity=line._LINE_OPACITIES[mode]),
+        )
+        for shape in routes:
             shape: line.Line
-            shape.render(drawing, map_bounds=self.map_bounds)
+            shape.drawing = self.drawing
+            mode_function(shape, mode_group, map_bounds=self.map_bounds)
             self._print(f"Rendered shape {shape}", 3)
-        drawing.save()
